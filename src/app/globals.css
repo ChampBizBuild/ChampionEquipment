@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f7f7f5;
+  --foreground: #111111;
+  --brand-yellow: #fdb813;
+  --brand-black: #111111;
+  --brand-green: #2d5a27;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+}
+
+input[type="checkbox"] {
+  accent-color: #fdb813;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--brand-green);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th {
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 2px solid #fdb813;
+  background: #111111;
+  color: #fdb813;
+}
+
+td {
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid #ececec;
+  font-size: 0.875rem;
+  vertical-align: top;
+  color: #111111;
+}
+
+tr:hover td {
+  background: rgba(253, 184, 19, 0.08);
+}
