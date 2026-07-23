@@ -555,9 +555,6 @@ export async function updateInvoiceLineItems(
   if (invoice.status === "paid") {
     throw new Error("Paid invoices cannot be edited");
   }
-  if (invoice.kind === "hire" && invoice.status !== "draft") {
-    throw new Error("Hire invoice can only be edited while draft");
-  }
 
   const { data: settings } = await admin
     .from("business_settings")
@@ -597,6 +594,7 @@ export async function updateInvoiceLineItems(
   );
 }
 
+/** Refresh totals + PDF from the invoice's current line items (keeps manual edits). */
 export async function regenerateInvoicePdf(invoiceId: string) {
   const admin = createAdminClient();
   const { data: invoice, error } = await admin
@@ -614,64 +612,88 @@ export async function regenerateInvoicePdf(invoiceId: string) {
     .single();
   if (!settings) throw new Error("Business settings missing");
 
-  let refreshed = invoice;
+  const line_items = (invoice.line_items || []) as InvoiceLineItem[];
+  const totals = totalsFromLineItems(
+    line_items,
+    Boolean(settings.gst_registered),
+  );
 
-  // Hire drafts: rebuild from rates + float/extras + LCC + GST
-  if (invoice.kind === "hire" && invoice.status === "draft") {
-    const details = normalizeHireDetails(invoice.bookings.hire_details);
-    const quote = buildHireInvoiceQuote({
-      pickupDate: invoice.bookings.pickup_date,
-      dropoffDate: invoice.bookings.dropoff_date,
-      dayRate: Number(invoice.bookings.equipment.day_rate),
-      weekRate: Number(invoice.bookings.equipment.week_rate),
-      gstRegistered: Boolean(settings.gst_registered),
-      needsChampionLcc: details.lcc_insurance === false,
-      travelFloatFee: details.travel_float_fee,
-      additionalHireCharge: details.additional_hire_charge,
-    });
+  const { data: updated, error: refreshError } = await admin
+    .from("invoices")
+    .update({
+      subtotal: totals.subtotal,
+      gst: totals.gst,
+      total: totals.total,
+    })
+    .eq("id", invoiceId)
+    .select("*")
+    .single();
 
-    const { data: updated, error: updateError } = await admin
-      .from("invoices")
-      .update({
-        line_items: quote.line_items,
-        subtotal: quote.subtotal,
-        gst: quote.gst,
-        total: quote.total,
-      })
-      .eq("id", invoiceId)
-      .select("*")
-      .single();
-
-    if (updateError || !updated) {
-      throw new Error(updateError?.message || "Could not rebuild hire invoice");
-    }
-    refreshed = updated;
-  } else {
-    const line_items = (invoice.line_items || []) as InvoiceLineItem[];
-    const totals = totalsFromLineItems(
-      line_items,
-      Boolean(settings.gst_registered),
-    );
-
-    const { data: updated, error: refreshError } = await admin
-      .from("invoices")
-      .update({
-        subtotal: totals.subtotal,
-        gst: totals.gst,
-        total: totals.total,
-      })
-      .eq("id", invoiceId)
-      .select("*")
-      .single();
-
-    if (refreshError || !updated) {
-      throw new Error(refreshError?.message || "Could not refresh invoice totals");
-    }
-    refreshed = updated;
+  if (refreshError || !updated) {
+    throw new Error(refreshError?.message || "Could not refresh invoice totals");
   }
 
   return attachInvoicePdf(
-    refreshed,
+    updated,
+    invoice.bookings,
+    settings as BusinessSettings,
+  );
+}
+
+/** Reset hire invoice lines from booking dates/rates + float + LCC (overwrites edits). */
+export async function rebuildHireInvoiceFromBooking(invoiceId: string) {
+  const admin = createAdminClient();
+  const { data: invoice, error } = await admin
+    .from("invoices")
+    .select("*, bookings(*, clients(*), equipment(*))")
+    .eq("id", invoiceId)
+    .single();
+
+  if (error || !invoice) throw new Error(error?.message || "Invoice not found");
+  if (invoice.kind !== "hire") {
+    throw new Error("Only hire invoices can be rebuilt from booking dates");
+  }
+  if (invoice.status === "paid") {
+    throw new Error("Paid invoices cannot be rebuilt");
+  }
+
+  const { data: settings } = await admin
+    .from("business_settings")
+    .select("*")
+    .limit(1)
+    .single();
+  if (!settings) throw new Error("Business settings missing");
+
+  const details = normalizeHireDetails(invoice.bookings.hire_details);
+  const quote = buildHireInvoiceQuote({
+    pickupDate: invoice.bookings.pickup_date,
+    dropoffDate: invoice.bookings.dropoff_date,
+    dayRate: Number(invoice.bookings.equipment.day_rate),
+    weekRate: Number(invoice.bookings.equipment.week_rate),
+    gstRegistered: Boolean(settings.gst_registered),
+    needsChampionLcc: details.lcc_insurance === false,
+    travelFloatFee: details.travel_float_fee,
+    additionalHireCharge: details.additional_hire_charge,
+  });
+
+  const { data: updated, error: updateError } = await admin
+    .from("invoices")
+    .update({
+      line_items: quote.line_items,
+      subtotal: quote.subtotal,
+      gst: quote.gst,
+      total: quote.total,
+    })
+    .eq("id", invoiceId)
+    .select("*")
+    .single();
+
+  if (updateError || !updated) {
+    throw new Error(updateError?.message || "Could not rebuild hire invoice");
+  }
+
+  return attachInvoicePdf(
+    updated,
     invoice.bookings,
     settings as BusinessSettings,
   );

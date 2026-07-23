@@ -59,10 +59,7 @@ export default async function InvoiceDetailPage({
             </table>
             {!lineItems.length ? (
               <p className="mt-2 text-sm text-neutral-500">
-                No line items yet
-                {invoice.kind === "additional"
-                  ? " — add extras on the right."
-                  : "."}
+                No line items yet — edit on the right.
               </p>
             ) : null}
             <div className="mt-4 space-y-1 text-sm">

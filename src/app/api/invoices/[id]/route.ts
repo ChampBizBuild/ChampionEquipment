@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   markInvoicePaid,
   markInvoiceSent,
+  rebuildHireInvoiceFromBooking,
   regenerateInvoicePdf,
   updateInvoiceLineItems,
 } from "@/lib/bookings";
@@ -40,6 +41,10 @@ export async function PATCH(
     }
     if (action === "regenerate_pdf") {
       const invoice = await regenerateInvoicePdf(params.id);
+      return NextResponse.json({ invoice });
+    }
+    if (action === "rebuild_from_booking") {
+      const invoice = await rebuildHireInvoiceFromBooking(params.id);
       return NextResponse.json({ invoice });
     }
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });

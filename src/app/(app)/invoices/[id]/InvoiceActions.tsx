@@ -1,9 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { InvoiceKind, InvoiceLineItem, InvoiceStatus } from "@/lib/types";
 import { btnPrimary, btnSecondary, inputClass } from "@/components/ui";
+
+function round2(n: number) {
+  return Math.round(n * 100) / 100;
+}
 
 export function InvoiceActions({
   invoiceId,
@@ -28,8 +32,17 @@ export function InvoiceActions({
 
   const canEdit = status !== "paid";
 
+  useEffect(() => {
+    setItems(initialItems);
+  }, [initialItems]);
+
   async function run(
-    action: "mark_sent" | "mark_paid" | "update_line_items" | "regenerate_pdf",
+    action:
+      | "mark_sent"
+      | "mark_paid"
+      | "update_line_items"
+      | "regenerate_pdf"
+      | "rebuild_from_booking",
     line_items?: InvoiceLineItem[],
   ) {
     setLoading(action);
@@ -51,30 +64,44 @@ export function InvoiceActions({
     router.refresh();
   }
 
+  function updateRow(
+    index: number,
+    patch: Partial<Pick<InvoiceLineItem, "description" | "quantity" | "unit_amount">>,
+  ) {
+    setItems((prev) =>
+      prev.map((item, i) => {
+        if (i !== index) return item;
+        const next = { ...item, ...patch };
+        next.amount = round2(Number(next.quantity) * Number(next.unit_amount));
+        return next;
+      }),
+    );
+  }
+
   function addItem() {
     const quantity = Math.max(0, Number(qty) || 0);
     const unit_amount = Math.max(0, Number(unit) || 0);
     const description = desc.trim() || "Additional charge";
-    const next = [
-      ...items,
+    setItems((prev) => [
+      ...prev,
       {
         description,
         quantity,
         unit_amount,
-        amount: Math.round(quantity * unit_amount * 100) / 100,
+        amount: round2(quantity * unit_amount),
       },
-    ];
-    setItems(next);
+    ]);
     setDesc("");
     setQty("1");
     setUnit("");
-    void run("update_line_items", next);
   }
 
   function removeItem(index: number) {
-    const next = items.filter((_, i) => i !== index);
-    setItems(next);
-    void run("update_line_items", next);
+    setItems((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function saveItems() {
+    void run("update_line_items", items);
   }
 
   async function noExtraCharges() {
@@ -114,66 +141,130 @@ export function InvoiceActions({
     router.refresh();
   }
 
+  const draftSubtotal = round2(
+    items.reduce((sum, li) => sum + Number(li.amount || 0), 0),
+  );
+
   return (
     <div className="space-y-3">
       <p className="text-sm text-neutral-600">
         {kind === "hire"
-          ? "Hire invoice — must be paid before scheduling."
+          ? "Hire invoice — edit days/charges below if needed (e.g. afternoon pickup counts as fewer billable days)."
           : "Additional charges after return (damage, extra days, cleaning, etc.)."}
       </p>
 
-      {canEdit && kind === "additional" ? (
+      {canEdit ? (
         <div className="space-y-2 rounded border border-neutral-200 p-3">
           <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-            Add charges
+            Edit line items
           </p>
+          {items.length === 0 ? (
+            <p className="text-sm text-neutral-500">No line items yet.</p>
+          ) : null}
           {items.map((item, i) => (
             <div
-              key={`${item.description}-${i}`}
-              className="flex items-start justify-between gap-2 text-sm"
+              key={i}
+              className="space-y-1.5 rounded border border-neutral-100 bg-neutral-50 p-2"
             >
-              <span>
-                {item.description} × {item.quantity} @ $
-                {Number(item.unit_amount).toFixed(2)}
-              </span>
-              <button
-                type="button"
-                className="text-xs text-rose-700"
-                onClick={() => removeItem(i)}
-              >
-                Remove
-              </button>
+              <input
+                className={inputClass}
+                value={item.description}
+                onChange={(e) => updateRow(i, { description: e.target.value })}
+                placeholder="Description"
+              />
+              <div className="grid grid-cols-[1fr_1fr_auto] items-center gap-2">
+                <input
+                  className={inputClass}
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={item.quantity}
+                  onChange={(e) =>
+                    updateRow(i, { quantity: Number(e.target.value) || 0 })
+                  }
+                  placeholder="Qty"
+                />
+                <input
+                  className={inputClass}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={item.unit_amount}
+                  onChange={(e) =>
+                    updateRow(i, { unit_amount: Number(e.target.value) || 0 })
+                  }
+                  placeholder="Unit $"
+                />
+                <button
+                  type="button"
+                  className="text-xs text-rose-700"
+                  onClick={() => removeItem(i)}
+                >
+                  Remove
+                </button>
+              </div>
+              <p className="text-right text-xs text-neutral-500">
+                Line total ${round2(Number(item.amount)).toFixed(2)}
+              </p>
             </div>
           ))}
-          <input
-            className={inputClass}
-            placeholder="Description e.g. Extra day / cleaning"
-            value={desc}
-            onChange={(e) => setDesc(e.target.value)}
-          />
-          <div className="grid grid-cols-2 gap-2">
+
+          <div className="border-t border-neutral-200 pt-2">
+            <p className="mb-1.5 text-xs font-medium text-neutral-500">
+              Add line
+            </p>
             <input
               className={inputClass}
-              placeholder="Qty"
-              value={qty}
-              onChange={(e) => setQty(e.target.value)}
+              placeholder={
+                kind === "hire"
+                  ? "Description e.g. Equipment hire - 3 days"
+                  : "Description e.g. Extra day / cleaning"
+              }
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
             />
-            <input
-              className={inputClass}
-              placeholder="Unit $"
-              value={unit}
-              onChange={(e) => setUnit(e.target.value)}
-            />
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <input
+                className={inputClass}
+                placeholder="Qty"
+                value={qty}
+                onChange={(e) => setQty(e.target.value)}
+              />
+              <input
+                className={inputClass}
+                placeholder="Unit $"
+                value={unit}
+                onChange={(e) => setUnit(e.target.value)}
+              />
+            </div>
+            <button
+              type="button"
+              className={`${btnSecondary} mt-2 w-full`}
+              disabled={!!loading}
+              onClick={addItem}
+            >
+              Add line item
+            </button>
           </div>
+
+          <div className="flex justify-between border-t border-neutral-200 pt-2 text-sm font-medium">
+            <span>Edited subtotal</span>
+            <span>${draftSubtotal.toFixed(2)}</span>
+          </div>
+
           <button
             type="button"
-            className={`${btnSecondary} w-full`}
+            className={`${btnPrimary} w-full`}
             disabled={!!loading}
-            onClick={addItem}
+            onClick={saveItems}
           >
-            {loading === "update_line_items" ? "Saving…" : "Add line item"}
+            {loading === "update_line_items"
+              ? "Saving…"
+              : "Save line items + PDF"}
           </button>
-          {status === "draft" || status === "sent" ? (
+
+          {kind === "additional" &&
+          (status === "draft" || status === "sent") ? (
             <button
               type="button"
               className={`${btnSecondary} w-full`}
@@ -207,12 +298,29 @@ export function InvoiceActions({
         disabled={!!loading}
         onClick={() => run("regenerate_pdf")}
       >
-        {loading === "regenerate_pdf"
-          ? "Working…"
-          : kind === "hire"
-            ? "Rebuild hire + LCC + GST / PDF"
-            : "Regenerate PDF + GST"}
+        {loading === "regenerate_pdf" ? "Working…" : "Regenerate PDF"}
       </button>
+
+      {kind === "hire" && canEdit ? (
+        <button
+          type="button"
+          className={`${btnSecondary} w-full`}
+          disabled={!!loading}
+          onClick={() => {
+            if (
+              confirm(
+                "Reset this invoice from booking dates/rates? Manual line edits will be overwritten.",
+              )
+            ) {
+              void run("rebuild_from_booking");
+            }
+          }}
+        >
+          {loading === "rebuild_from_booking"
+            ? "Working…"
+            : "Recalculate from hire dates"}
+        </button>
+      ) : null}
 
       {status === "draft" ? (
         <button
