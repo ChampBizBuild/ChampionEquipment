@@ -3,6 +3,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { btnPrimary, btnSecondary, inputClass } from "@/components/ui";
+import { compressImageFile } from "@/lib/imageUpload";
 import { FUEL_LEVELS, PHOTO_SIDES } from "@/lib/inspections";
 import type {
   ConditionInspection,
@@ -48,29 +49,79 @@ export function ConditionInspectionForm({
     setLoading(true);
     setError(null);
     setMessage(null);
-    const fd = new FormData(e.currentTarget);
-    fd.set("phase", phase);
-    fd.set(
-      "needs_service",
-      (e.currentTarget.elements.namedItem("needs_service") as HTMLInputElement)
-        ?.checked
-        ? "true"
-        : "false",
-    );
 
-    const res = await fetch(`/api/bookings/${bookingId}/inspections`, {
-      method: "POST",
-      body: fd,
-    });
-    const data = await res.json();
-    setLoading(false);
-    if (!res.ok) {
-      setError(data.error || "Save failed");
-      return;
+    try {
+      const formEl = e.currentTarget;
+      const fd = new FormData();
+      fd.set("phase", phase);
+      fd.set(
+        "hours_reading",
+        String(
+          (formEl.elements.namedItem("hours_reading") as HTMLInputElement)
+            ?.value || "",
+        ),
+      );
+      fd.set(
+        "fuel_level",
+        String(
+          (formEl.elements.namedItem("fuel_level") as HTMLSelectElement)
+            ?.value || "",
+        ),
+      );
+      fd.set(
+        "notes",
+        String(
+          (formEl.elements.namedItem("notes") as HTMLTextAreaElement)?.value ||
+            "",
+        ),
+      );
+      fd.set(
+        "needs_service",
+        (formEl.elements.namedItem("needs_service") as HTMLInputElement)
+          ?.checked
+          ? "true"
+          : "false",
+      );
+
+      for (const side of PHOTO_SIDES) {
+        const input = formEl.elements.namedItem(
+          `photo_${side}`,
+        ) as HTMLInputElement | null;
+        const file = input?.files?.[0];
+        if (file && file.size > 0) {
+          const compressed = await compressImageFile(file);
+          fd.set(`photo_${side}`, compressed, compressed.name);
+        }
+      }
+
+      const res = await fetch(`/api/bookings/${bookingId}/inspections`, {
+        method: "POST",
+        body: fd,
+      });
+
+      let data: { error?: string; ackUrl?: string } = {};
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error(
+          res.status === 413 || res.status >= 500
+            ? "Upload failed — photos may be too large. Try again or use smaller images."
+            : `Save failed (HTTP ${res.status}).`,
+        );
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error || "Save failed");
+      }
+
+      setMessage("Inspection saved.");
+      setAckUrl(data.ackUrl || null);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setLoading(false);
     }
-    setMessage("Inspection saved.");
-    setAckUrl(data.ackUrl || null);
-    router.refresh();
   }
 
   async function copyLink(url: string) {
@@ -206,6 +257,12 @@ export function ConditionInspectionForm({
             </div>
           </div>
 
+          <p className="text-xs text-neutral-500">
+            Photos: on your phone you can choose <strong>Camera</strong> or{" "}
+            <strong>Photo Library / Gallery</strong>. Images are compressed
+            before upload.
+          </p>
+
           <div className="grid gap-3 sm:grid-cols-2">
             {PHOTO_SIDES.map((side) => {
               const hasExisting =
@@ -221,11 +278,11 @@ export function ConditionInspectionForm({
                   <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     Photo {side} {hasExisting ? "(replace)" : "*"}
                   </label>
+                  {/* No capture= — lets phone offer Camera OR Gallery */}
                   <input
                     name={`photo_${side}`}
                     type="file"
-                    accept="image/*"
-                    capture="environment"
+                    accept="image/*,.heic,.heif"
                     className="block w-full text-xs"
                     required={!hasExisting}
                   />

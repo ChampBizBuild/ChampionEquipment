@@ -73,9 +73,16 @@ export async function POST(
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
     }
 
-    if (phase === "outbound" && !["confirmed", "out"].includes(booking.status)) {
+    // Outbound once hire is locked in (confirmed/scheduled) or already out
+    if (
+      phase === "outbound" &&
+      !["confirmed", "out", "returned", "invoiced"].includes(booking.status)
+    ) {
       return NextResponse.json(
-        { error: "Outbound inspection is for confirmed / scheduled hires" },
+        {
+          error:
+            "Outbound inspection needs the booking confirmed/scheduled first",
+        },
         { status: 400 },
       );
     }
@@ -106,16 +113,37 @@ export async function POST(
     for (const side of PHOTO_SIDES) {
       const file = form.get(`photo_${side}`);
       if (file instanceof File && file.size > 0) {
-        const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+        // Cap single photo (~6MB) — client also compresses
+        if (file.size > 6 * 1024 * 1024) {
+          return NextResponse.json(
+            {
+              error: `Photo ${side} is too large. Choose a smaller image or retake at lower resolution.`,
+            },
+            { status: 400 },
+          );
+        }
+        const rawExt = file.name.split(".").pop()?.toLowerCase() || "jpg";
+        const ext =
+          rawExt === "jpeg" || rawExt === "jpg" || rawExt === "png" || rawExt === "webp"
+            ? rawExt === "jpeg"
+              ? "jpg"
+              : rawExt
+            : "jpg";
         const path = `inspections/${params.id}/${phase}/${side}.${ext}`;
         const buffer = Buffer.from(await file.arrayBuffer());
+        const contentType =
+          file.type && file.type.startsWith("image/")
+            ? file.type
+            : "image/jpeg";
         const { error: uploadError } = await admin.storage
           .from("documents")
           .upload(path, buffer, {
-            contentType: file.type || "image/jpeg",
+            contentType,
             upsert: true,
           });
-        if (uploadError) throw new Error(uploadError.message);
+        if (uploadError) {
+          throw new Error(`Photo ${side} upload failed: ${uploadError.message}`);
+        }
 
         const { data: signed } = await admin.storage
           .from("documents")

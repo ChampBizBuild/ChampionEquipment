@@ -314,7 +314,9 @@ export default async function BookingDetailPage({
               assetId={booking.equipment?.asset_id}
               equipmentName={booking.equipment?.name || "Equipment"}
               initial={outbound || null}
-              canEdit={["confirmed", "out"].includes(booking.status)}
+              canEdit={["confirmed", "out", "returned", "invoiced"].includes(
+                booking.status,
+              )}
             />
           </Panel>
         ) : null}
