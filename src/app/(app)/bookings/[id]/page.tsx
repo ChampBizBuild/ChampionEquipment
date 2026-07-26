@@ -8,6 +8,7 @@ import type { ConditionInspection } from "@/lib/types";
 import { BookingActions } from "./BookingActions";
 import { HireAgreementEditor } from "./HireAgreementEditor";
 import { OperatorReadyChecklist } from "./OperatorReadyChecklist";
+import { AcceptLinkShare } from "./AcceptLinkShare";
 import { ConditionInspectionForm } from "./ConditionInspectionForm";
 
 export default async function BookingDetailPage({
@@ -165,12 +166,19 @@ export default async function BookingDetailPage({
                 <dt className="text-neutral-500">Notes</dt>
                 <dd className="whitespace-pre-wrap">{booking.notes || "—"}</dd>
               </div>
-              <div className="sm:col-span-2">
-                <dt className="text-neutral-500">Accept link</dt>
-                <dd className="break-all text-xs text-neutral-600">{acceptUrl}</dd>
-              </div>
             </dl>
           </Panel>
+
+          {["enquiry", "terms_sent", "confirmed"].includes(booking.status) ? (
+            <Panel title="Send hire agreement to client">
+              <AcceptLinkShare
+                acceptUrl={acceptUrl}
+                clientName={booking.clients?.contact_name}
+                clientPhone={booking.clients?.phone}
+                equipmentName={booking.equipment?.name}
+              />
+            </Panel>
+          ) : null}
 
           <Panel title="Machine Hire Agreement">
             <HireAgreementEditor

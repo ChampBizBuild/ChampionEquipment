@@ -149,10 +149,10 @@ export function BookingActions({
             className={btnSecondary}
           >
             {loading === "resend" || loading === "terms_sent"
-              ? "Sending…"
+              ? "Working…"
               : status === "enquiry"
-                ? "Send terms email"
-                : "Resend terms email"}
+                ? "Mark terms sent (after you share the link)"
+                : "Mark terms re-sent"}
           </button>
         ) : null}
 
