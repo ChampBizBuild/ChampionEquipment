@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PageHeader, Panel } from "@/components/ui";
 import { BookingBadge, InvoiceBadge } from "@/components/StatusBadge";
 import { shortDate } from "@/lib/format";
+import { normalizeHireDetails } from "@/lib/hireAgreement";
 import type { ConditionInspection } from "@/lib/types";
 import { BookingActions } from "./BookingActions";
 import { HireAgreementEditor } from "./HireAgreementEditor";
@@ -52,6 +53,8 @@ export default async function BookingDetailPage({
     process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3002"
   ).replace(/\/$/, "");
   const acceptUrl = `${appUrl}/accept/${booking.accept_token}`;
+  const scheduleUrl = `${appUrl}/schedule/${booking.accept_token}`;
+  const hireDetails = normalizeHireDetails(booking.hire_details);
   const hireInvoiceRow = (invoices || []).find(
     (i) => i.kind === "hire" || !i.kind,
   );
@@ -311,6 +314,14 @@ export default async function BookingDetailPage({
             paymentReceivedAt={booking.payment_received_at}
             scheduledAt={booking.scheduled_at}
             hireInvoice={hireInvoice}
+            scheduleUrl={scheduleUrl}
+            clientName={booking.clients?.contact_name}
+            clientPhone={booking.clients?.phone}
+            equipmentName={booking.equipment?.name}
+            pickupDate={booking.pickup_date}
+            dropoffDate={booking.dropoff_date}
+            collectionTime={hireDetails.preferred_collection_time}
+            siteAddress={hireDetails.site_address}
           />
         </Panel>
 

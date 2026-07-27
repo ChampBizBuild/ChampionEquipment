@@ -6,6 +6,7 @@ import Link from "next/link";
 import type { BookingStatus, InvoiceStatus } from "@/lib/types";
 import { btnPrimary, btnSecondary } from "@/components/ui";
 import { money, shortDate } from "@/lib/format";
+import { ScheduleShare } from "./ScheduleShare";
 
 function CheckRow({
   done,
@@ -43,6 +44,14 @@ export function OperatorReadyChecklist({
   paymentReceivedAt,
   scheduledAt,
   hireInvoice,
+  scheduleUrl,
+  clientName,
+  clientPhone,
+  equipmentName,
+  pickupDate,
+  dropoffDate,
+  collectionTime,
+  siteAddress,
 }: {
   bookingId: string;
   status: BookingStatus;
@@ -54,6 +63,14 @@ export function OperatorReadyChecklist({
     status: InvoiceStatus;
     total: number;
   } | null;
+  scheduleUrl: string;
+  clientName?: string | null;
+  clientPhone?: string | null;
+  equipmentName?: string | null;
+  pickupDate: string;
+  dropoffDate: string;
+  collectionTime?: string | null;
+  siteAddress?: string | null;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
@@ -179,9 +196,27 @@ export function OperatorReadyChecklist({
       ) : null}
 
       {scheduledDone ? (
-        <p className="text-sm text-brand-green">
-          Hire is scheduled. On pickup day, mark the booking <strong>Out</strong>.
-        </p>
+        <div className="space-y-3">
+          <p className="text-sm text-brand-green">
+            Hire is scheduled. Send confirmation to the client below. On pickup
+            day, mark the booking <strong>Out</strong>.
+          </p>
+          <div className="rounded border border-neutral-200 p-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              Send schedule to client
+            </p>
+            <ScheduleShare
+              scheduleUrl={scheduleUrl}
+              clientName={clientName}
+              clientPhone={clientPhone}
+              equipmentName={equipmentName}
+              pickupDate={pickupDate}
+              dropoffDate={dropoffDate}
+              collectionTime={collectionTime}
+              siteAddress={siteAddress}
+            />
+          </div>
+        </div>
       ) : null}
 
       {error ? <p className="text-sm text-rose-700">{error}</p> : null}
