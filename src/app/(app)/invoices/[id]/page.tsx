@@ -6,6 +6,7 @@ import { InvoiceBadge } from "@/components/StatusBadge";
 import { money, shortDate } from "@/lib/format";
 import type { InvoiceLineItem } from "@/lib/types";
 import { InvoiceActions } from "./InvoiceActions";
+import { InvoiceShare } from "./InvoiceShare";
 
 export default async function InvoiceDetailPage({
   params,
@@ -100,15 +101,39 @@ export default async function InvoiceDetailPage({
           </Panel>
         </div>
 
-        <Panel title="Actions">
-          <InvoiceActions
-            invoiceId={invoice.id}
-            status={invoice.status}
-            kind={invoice.kind === "additional" ? "additional" : "hire"}
-            pdfUrl={invoice.pdf_url}
-            initialItems={lineItems}
-          />
-        </Panel>
+        <div className="space-y-4">
+          {invoice.pdf_url ? (
+            <Panel title="Send invoice to client">
+              <InvoiceShare
+                invoiceNumber={invoice.invoice_number}
+                pdfUrl={invoice.pdf_url}
+                total={Number(invoice.total)}
+                dueDate={invoice.due_date}
+                clientName={booking?.clients?.contact_name}
+                clientPhone={booking?.clients?.phone}
+                equipmentName={booking?.equipment?.name}
+                kind={invoice.kind === "additional" ? "additional" : "hire"}
+              />
+            </Panel>
+          ) : (
+            <Panel title="Send invoice to client">
+              <p className="text-sm text-neutral-500">
+                Generate the PDF first (Save line items or Regenerate PDF), then
+                you can share it here.
+              </p>
+            </Panel>
+          )}
+
+          <Panel title="Actions">
+            <InvoiceActions
+              invoiceId={invoice.id}
+              status={invoice.status}
+              kind={invoice.kind === "additional" ? "additional" : "hire"}
+              pdfUrl={invoice.pdf_url}
+              initialItems={lineItems}
+            />
+          </Panel>
+        </div>
       </div>
     </div>
   );
