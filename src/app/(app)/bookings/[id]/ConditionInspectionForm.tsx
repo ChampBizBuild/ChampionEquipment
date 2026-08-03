@@ -154,7 +154,7 @@ export function ConditionInspectionForm({
     }
   }
 
-  async function usePreviousReturn() {
+  async function applyPreviousReturn() {
     setCarrying(true);
     setError(null);
     setMessage(null);
@@ -208,7 +208,7 @@ export function ConditionInspectionForm({
             type="button"
             className={btnPrimary}
             disabled={carrying || loading}
-            onClick={() => void usePreviousReturn()}
+            onClick={() => void applyPreviousReturn()}
           >
             {carrying ? "Applying…" : "Use previous return as outbound"}
           </button>
