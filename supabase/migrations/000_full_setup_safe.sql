@@ -123,7 +123,7 @@ create table if not exists invoices (
   id uuid primary key default gen_random_uuid(),
   booking_id uuid not null references bookings(id) on delete restrict,
   kind text not null default 'hire'
-    check (kind in ('hire', 'additional')),
+    check (kind in ('hire', 'additional', 'extension')),
   invoice_number text not null unique,
   line_items jsonb not null default '[]'::jsonb,
   subtotal numeric(12,2) not null default 0,
@@ -137,8 +137,13 @@ create table if not exists invoices (
 );
 
 alter table invoices add column if not exists kind text not null default 'hire';
-create unique index if not exists invoices_booking_kind_uidx
-  on invoices (booking_id, kind);
+drop index if exists invoices_booking_kind_uidx;
+create unique index if not exists invoices_booking_hire_uidx
+  on invoices (booking_id)
+  where kind = 'hire';
+create unique index if not exists invoices_booking_additional_uidx
+  on invoices (booking_id)
+  where kind = 'additional';
 
 create index if not exists bookings_client_idx on bookings(client_id);
 create index if not exists bookings_equipment_idx on bookings(equipment_id);

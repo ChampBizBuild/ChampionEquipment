@@ -25,7 +25,16 @@ export default async function InvoiceDetailPage({
   const booking = invoice.bookings;
   const lineItems = (invoice.line_items || []) as InvoiceLineItem[];
   const kindLabel =
-    invoice.kind === "additional" ? "Additional charges" : "Hire";
+    invoice.kind === "additional"
+      ? "Additional charges"
+      : invoice.kind === "extension"
+        ? "Mid-term extra hire"
+        : "Hire";
+  const shareKind =
+    invoice.kind === "additional" || invoice.kind === "extension"
+      ? invoice.kind
+      : "hire";
+  const actionsKind = shareKind;
 
   return (
     <div>
@@ -112,7 +121,7 @@ export default async function InvoiceDetailPage({
                 clientName={booking?.clients?.contact_name}
                 clientPhone={booking?.clients?.phone}
                 equipmentName={booking?.equipment?.name}
-                kind={invoice.kind === "additional" ? "additional" : "hire"}
+                kind={shareKind}
               />
             </Panel>
           ) : (
@@ -128,7 +137,7 @@ export default async function InvoiceDetailPage({
             <InvoiceActions
               invoiceId={invoice.id}
               status={invoice.status}
-              kind={invoice.kind === "additional" ? "additional" : "hire"}
+              kind={actionsKind}
               pdfUrl={invoice.pdf_url}
               initialItems={lineItems}
             />

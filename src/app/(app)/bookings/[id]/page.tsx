@@ -6,11 +6,14 @@ import { BookingBadge, InvoiceBadge } from "@/components/StatusBadge";
 import { shortDate } from "@/lib/format";
 import { normalizeHireDetails } from "@/lib/hireAgreement";
 import type { ConditionInspection } from "@/lib/types";
+import { summarizeOverstay, todayDateString } from "@/lib/overstay";
+import { getLatestReturnForEquipment } from "@/lib/inspections";
 import { BookingActions } from "./BookingActions";
 import { HireAgreementEditor } from "./HireAgreementEditor";
 import { OperatorReadyChecklist } from "./OperatorReadyChecklist";
 import { AcceptLinkShare } from "./AcceptLinkShare";
 import { ConditionInspectionForm } from "./ConditionInspectionForm";
+import { OverstayPanel } from "./OverstayPanel";
 
 export default async function BookingDetailPage({
   params,
@@ -81,6 +84,35 @@ export default async function BookingDetailPage({
   const showReturn = ["out", "returned", "invoiced", "paid"].includes(
     booking.status,
   );
+  const overstay = summarizeOverstay({
+    dropoffDate: booking.dropoff_date,
+    asOfDate: todayDateString(),
+    dayRate: Number(booking.equipment?.day_rate || 0),
+    invoices: (invoices || []).map((i) => ({
+      kind: i.kind,
+      line_items: i.line_items,
+      status: i.status,
+    })),
+  });
+
+  const previousReturn =
+    showOutbound && !outbound
+      ? await getLatestReturnForEquipment(booking.equipment_id, booking.id)
+      : null;
+  const previousReturnSeed = previousReturn
+    ? {
+        hours_reading: previousReturn.hours_reading,
+        fuel_level: previousReturn.fuel_level,
+        notes: previousReturn.notes,
+        needs_service: previousReturn.needs_service,
+        photo_front_url: previousReturn.photo_front_url,
+        photo_rear_url: previousReturn.photo_rear_url,
+        photo_left_url: previousReturn.photo_left_url,
+        photo_right_url: previousReturn.photo_right_url,
+        inspected_at: previousReturn.inspected_at,
+        source_client_name: previousReturn.source_client_name,
+      }
+    : null;
 
   return (
     <div>
@@ -270,7 +302,11 @@ export default async function BookingDetailPage({
                   {invoices!.map((inv) => (
                     <tr key={inv.id}>
                       <td className="capitalize">
-                        {inv.kind === "additional" ? "Additional" : "Hire"}
+                        {inv.kind === "additional"
+                          ? "Additional"
+                          : inv.kind === "extension"
+                            ? "Mid-term"
+                            : "Hire"}
                       </td>
                       <td>
                         <Link
@@ -298,13 +334,20 @@ export default async function BookingDetailPage({
         </div>
 
         <Panel title="Status actions">
-          <BookingActions
-            bookingId={booking.id}
-            status={booking.status}
-            needsService={booking.needs_service}
-            hasOutboundInspection={Boolean(outbound)}
-            hasReturnInspection={Boolean(returnInsp)}
-          />
+          <div className="space-y-4">
+            <BookingActions
+              bookingId={booking.id}
+              status={booking.status}
+              needsService={booking.needs_service}
+              hasOutboundInspection={Boolean(outbound)}
+              hasReturnInspection={Boolean(returnInsp)}
+            />
+            <OverstayPanel
+              bookingId={booking.id}
+              status={booking.status}
+              summary={overstay}
+            />
+          </div>
         </Panel>
 
         <Panel title="Ready to schedule">
@@ -333,6 +376,7 @@ export default async function BookingDetailPage({
               assetId={booking.equipment?.asset_id}
               equipmentName={booking.equipment?.name || "Equipment"}
               initial={outbound || null}
+              previousReturn={previousReturnSeed}
               canEdit={["confirmed", "out", "returned", "invoiced"].includes(
                 booking.status,
               )}

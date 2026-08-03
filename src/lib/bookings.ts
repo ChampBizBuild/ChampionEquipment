@@ -13,6 +13,12 @@ import {
   requireInspection,
   suggestedReturnCharges,
 } from "@/lib/inspections";
+import {
+  billedExtraHireDays,
+  buildExtraHireLineItem,
+  summarizeOverstay,
+  todayDateString,
+} from "@/lib/overstay";
 import type {
   BookingStatus,
   BusinessSettings,
@@ -328,11 +334,19 @@ export async function transitionBookingStatus(params: {
     );
 
     if (returnInspection) {
+      const { data: existingInvoices } = await admin
+        .from("invoices")
+        .select("kind, line_items, status")
+        .eq("booking_id", params.bookingId)
+        .eq("kind", "extension");
+
+      const alreadyBilled = billedExtraHireDays(existingInvoices || []);
       const suggested = suggestedReturnCharges({
         fuelLevel: returnInspection.fuel_level,
         dropoffDate: booking.dropoff_date,
         returnDate: returnInspection.inspected_at,
         dayRate: Number(booking.equipment.day_rate),
+        alreadyBilledExtraDays: alreadyBilled,
       });
 
       if (suggested.length && invoice?.id) {
@@ -469,6 +483,128 @@ export async function createInvoiceForBooking(
 /** @deprecated use createInvoiceForBooking(bookingId, "additional") */
 export async function createDraftInvoiceForBooking(bookingId: string) {
   return createInvoiceForBooking(bookingId, "additional");
+}
+
+/**
+ * Create a mid-term extension invoice for currently unbilled overstay days.
+ * Booking must be `out` and past drop-off with unbilled days > 0.
+ */
+export async function createExtensionInvoiceForBooking(bookingId: string) {
+  const admin = createAdminClient();
+
+  const { data: booking, error } = await admin
+    .from("bookings")
+    .select("*, clients(*), equipment(*)")
+    .eq("id", bookingId)
+    .single();
+
+  if (error || !booking) throw new Error(error?.message || "Booking not found");
+  if (booking.status !== "out") {
+    throw new Error("Mid-term invoices can only be created while the machine is Out");
+  }
+
+  const { data: invoices } = await admin
+    .from("invoices")
+    .select("kind, line_items, status")
+    .eq("booking_id", bookingId);
+
+  const overstay = summarizeOverstay({
+    dropoffDate: booking.dropoff_date,
+    asOfDate: todayDateString(),
+    dayRate: Number(booking.equipment.day_rate),
+    invoices: invoices || [],
+  });
+
+  if (overstay.unbilledDays <= 0) {
+    throw new Error("No unbilled extra hire days to invoice yet");
+  }
+
+  const { data: settings } = await admin
+    .from("business_settings")
+    .select("*")
+    .limit(1)
+    .single();
+  if (!settings) throw new Error("Business settings missing");
+
+  const line_items: InvoiceLineItem[] = [
+    buildExtraHireLineItem(
+      overstay.unbilledDays,
+      overstay.dayRate,
+      "mid-term",
+    ),
+  ];
+  const totals = totalsFromLineItems(
+    line_items,
+    Boolean(settings.gst_registered),
+  );
+
+  const invoiceNumber = `${settings.invoice_prefix}-${settings.next_invoice_number}`;
+
+  const { data: invoice, error: invError } = await admin
+    .from("invoices")
+    .insert({
+      booking_id: bookingId,
+      kind: "extension",
+      invoice_number: invoiceNumber,
+      line_items,
+      subtotal: totals.subtotal,
+      gst: totals.gst,
+      total: totals.total,
+      due_date: defaultDueDate(undefined, 7),
+      status: "draft",
+    })
+    .select("*")
+    .single();
+
+  if (invError || !invoice) {
+    throw new Error(invError?.message || "Extension invoice failed");
+  }
+
+  await admin
+    .from("business_settings")
+    .update({
+      next_invoice_number: settings.next_invoice_number + 1,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", settings.id);
+
+  return attachInvoicePdf(invoice, booking, settings as BusinessSettings).catch(
+    async (err) => {
+      console.warn("[invoice] PDF generation failed; invoice saved", err);
+      return invoice;
+    },
+  );
+}
+
+export async function getBookingOverstay(bookingId: string) {
+  const admin = createAdminClient();
+  const { data: booking, error } = await admin
+    .from("bookings")
+    .select("status, dropoff_date, equipment(day_rate)")
+    .eq("id", bookingId)
+    .single();
+
+  if (error || !booking) throw new Error(error?.message || "Booking not found");
+
+  const { data: invoices } = await admin
+    .from("invoices")
+    .select("kind, line_items, status")
+    .eq("booking_id", bookingId);
+
+  const equipment = booking.equipment as
+    | { day_rate: number }
+    | { day_rate: number }[]
+    | null;
+  const dayRate = Array.isArray(equipment)
+    ? Number(equipment[0]?.day_rate || 0)
+    : Number(equipment?.day_rate || 0);
+
+  return summarizeOverstay({
+    dropoffDate: booking.dropoff_date,
+    asOfDate: todayDateString(),
+    dayRate,
+    invoices: invoices || [],
+  });
 }
 
 async function attachInvoicePdf(
@@ -718,6 +854,11 @@ export async function markInvoicePaid(invoiceId: string) {
         payment_notes: `Hire invoice ${invoice.invoice_number} paid`,
       })
       .eq("id", invoice.booking_id);
+    return invoice;
+  }
+
+  // Mid-term extension paid — booking stays Out until returned
+  if (invoice.kind === "extension") {
     return invoice;
   }
 

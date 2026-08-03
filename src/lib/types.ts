@@ -24,8 +24,8 @@ export type DocumentType =
 
 export type InvoiceStatus = "draft" | "sent" | "paid" | "overdue";
 
-/** Hire = charged before schedule; additional = extras on return. */
-export type InvoiceKind = "hire" | "additional";
+/** Hire = before schedule; extension = mid-term overstay; additional = on return. */
+export type InvoiceKind = "hire" | "additional" | "extension";
 
 export type Client = {
   id: string;

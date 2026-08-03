@@ -2,8 +2,13 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader, Panel, btnPrimary } from "@/components/ui";
 import { BookingBadge, EquipmentBadge } from "@/components/StatusBadge";
-import { shortDate } from "@/lib/format";
-import type { BookingStatus } from "@/lib/types";
+import { money, shortDate } from "@/lib/format";
+import {
+  EXTENSION_SUGGEST_DAYS,
+  summarizeOverstay,
+  todayDateString,
+} from "@/lib/overstay";
+import type { BookingStatus, Invoice } from "@/lib/types";
 
 const ACTIVE: BookingStatus[] = [
   "enquiry",
@@ -20,11 +25,44 @@ export default async function DashboardPage() {
   const [{ data: bookings }, { data: equipment }] = await Promise.all([
     supabase
       .from("bookings")
-      .select("*, clients(business_name, contact_name), equipment(name, status)")
+      .select(
+        "*, clients(business_name, contact_name), equipment(name, status, day_rate)",
+      )
       .in("status", ACTIVE)
       .order("pickup_date", { ascending: true }),
     supabase.from("equipment").select("*").order("name"),
   ]);
+
+  const outBookingIds = (bookings || [])
+    .filter((b) => b.status === "out")
+    .map((b) => b.id);
+
+  const { data: outInvoices } = outBookingIds.length
+    ? await supabase
+        .from("invoices")
+        .select("booking_id, kind, line_items, status")
+        .in("booking_id", outBookingIds)
+    : { data: [] as Array<Pick<Invoice, "kind" | "line_items" | "status"> & { booking_id: string }> };
+
+  const invoicesByBooking = new Map<string, typeof outInvoices>();
+  for (const inv of outInvoices || []) {
+    const list = invoicesByBooking.get(inv.booking_id) || [];
+    list.push(inv);
+    invoicesByBooking.set(inv.booking_id, list);
+  }
+
+  const midTermDue = (bookings || [])
+    .filter((b) => b.status === "out")
+    .map((b) => {
+      const summary = summarizeOverstay({
+        dropoffDate: b.dropoff_date,
+        asOfDate: todayDateString(),
+        dayRate: Number(b.equipment?.day_rate || 0),
+        invoices: invoicesByBooking.get(b.id) || [],
+      });
+      return { booking: b, summary };
+    })
+    .filter((row) => row.summary.suggestInvoice);
 
   const byDay = new Map<string, typeof bookings>();
   for (const b of bookings || []) {
@@ -51,6 +89,34 @@ export default async function DashboardPage() {
           </Link>
         }
       />
+
+      {midTermDue.length > 0 ? (
+        <div className="mb-4 rounded border border-amber-300 bg-amber-50 p-4">
+          <div className="text-sm font-semibold text-amber-950">
+            Mid-term invoice due ({midTermDue.length}) · {EXTENSION_SUGGEST_DAYS}+
+            unbilled extra days
+          </div>
+          <div className="mt-2 space-y-2">
+            {midTermDue.map(({ booking: b, summary }) => (
+              <Link
+                key={b.id}
+                href={`/bookings/${b.id}`}
+                className="flex flex-wrap items-center justify-between gap-2 rounded border border-amber-200 bg-white px-3 py-2 text-sm hover:bg-amber-50"
+              >
+                <span>
+                  {b.equipment?.name} · {b.clients?.business_name} ·{" "}
+                  {summary.unbilledDays} unbilled day
+                  {summary.unbilledDays === 1 ? "" : "s"} (
+                  {money(summary.estimatedUnbilledAmount)})
+                </span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+                  Invoice extra hire
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {enquiries.length > 0 ? (
         <div className="mb-4 rounded border border-brand-yellow bg-brand-yellow/15 p-4">

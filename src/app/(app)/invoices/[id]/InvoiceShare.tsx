@@ -20,11 +20,15 @@ export function InvoiceShare({
   clientName?: string | null;
   clientPhone?: string | null;
   equipmentName?: string | null;
-  kind: "hire" | "additional";
+  kind: "hire" | "additional" | "extension";
 }) {
   const firstName = clientName?.split(" ")[0];
   const kindLabel =
-    kind === "additional" ? "additional charges invoice" : "hire invoice";
+    kind === "additional"
+      ? "additional charges invoice"
+      : kind === "extension"
+        ? "mid-term extra hire invoice"
+        : "hire invoice";
 
   const shareText = [
     "Hi" + (firstName ? ` ${firstName}` : "") + ",",

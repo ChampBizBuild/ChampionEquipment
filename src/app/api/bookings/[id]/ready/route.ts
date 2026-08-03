@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createInvoiceForBooking } from "@/lib/bookings";
+import { carryForwardOutboundFromPreviousReturn } from "@/lib/inspections";
 
 export async function POST(
   request: Request,
@@ -116,7 +117,23 @@ export async function POST(
         .update({ status: "booked" })
         .eq("id", booking.equipment_id);
 
-      return NextResponse.json({ booking: data });
+      // Default outbound = last return on this machine (when available)
+      let outboundCarry: { created: boolean; sourceClient: string | null } | null =
+        null;
+      try {
+        const carried = await carryForwardOutboundFromPreviousReturn({
+          bookingId: params.id,
+          inspectedBy: user.email || user.id,
+        });
+        outboundCarry = {
+          created: carried.created,
+          sourceClient: carried.source?.source_client_name || null,
+        };
+      } catch {
+        // No previous return — operator fills outbound manually
+      }
+
+      return NextResponse.json({ booking: data, outboundCarry });
     }
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });

@@ -150,7 +150,9 @@ export function InvoiceActions({
       <p className="text-sm text-neutral-600">
         {kind === "hire"
           ? "Hire invoice — edit days/charges below if needed (e.g. afternoon pickup counts as fewer billable days)."
-          : "Additional charges after return (damage, extra days, cleaning, etc.)."}
+          : kind === "extension"
+            ? "Mid-term extra hire — days past the original drop-off while the machine is still out."
+            : "Additional charges after return (damage, remaining extra days, cleaning, etc.)."}
       </p>
 
       {canEdit ? (
@@ -344,7 +346,9 @@ export function InvoiceActions({
             ? "Working…"
             : kind === "hire"
               ? "Mark hire invoice paid"
-              : "Mark as paid"}
+              : kind === "extension"
+                ? "Mark mid-term invoice paid"
+                : "Mark as paid"}
         </button>
       ) : null}
 
@@ -352,7 +356,9 @@ export function InvoiceActions({
         <p className="text-sm text-brand-green">
           {kind === "hire"
             ? "Hire invoice paid — you can schedule the hire."
-            : "Additional invoice paid. Booking closed."}
+            : kind === "extension"
+              ? "Mid-term invoice paid. Booking stays Out until returned."
+              : "Additional invoice paid. Booking closed."}
         </p>
       ) : null}
 

@@ -119,7 +119,11 @@ export default async function ClientDetailPage({
               {(invoices || []).map((inv) => (
                 <tr key={inv.id}>
                   <td className="capitalize">
-                    {inv.kind === "additional" ? "Additional" : "Hire"}
+                    {inv.kind === "additional"
+                      ? "Additional"
+                      : inv.kind === "extension"
+                        ? "Mid-term"
+                        : "Hire"}
                   </td>
                   <td>
                     <Link

@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { FUEL_LEVELS, PHOTO_SIDES } from "@/lib/inspections";
+import {
+  FUEL_LEVELS,
+  PHOTO_SIDES,
+  getLatestReturnForEquipment,
+} from "@/lib/inspections";
 import type { FuelLevel, InspectionPhase } from "@/lib/types";
 
 export async function GET(
@@ -109,6 +113,30 @@ export async function POST(
       photo_left_url: existing?.photo_left_url || null,
       photo_right_url: existing?.photo_right_url || null,
     };
+
+    // Default outbound photos from the machine's last return when not replaced
+    if (
+      phase === "outbound" &&
+      (!photoUrls.photo_front_url ||
+        !photoUrls.photo_rear_url ||
+        !photoUrls.photo_left_url ||
+        !photoUrls.photo_right_url)
+    ) {
+      const previous = await getLatestReturnForEquipment(
+        booking.equipment_id,
+        params.id,
+      );
+      if (previous) {
+        photoUrls.photo_front_url =
+          photoUrls.photo_front_url || previous.photo_front_url;
+        photoUrls.photo_rear_url =
+          photoUrls.photo_rear_url || previous.photo_rear_url;
+        photoUrls.photo_left_url =
+          photoUrls.photo_left_url || previous.photo_left_url;
+        photoUrls.photo_right_url =
+          photoUrls.photo_right_url || previous.photo_right_url;
+      }
+    }
 
     for (const side of PHOTO_SIDES) {
       const file = form.get(`photo_${side}`);

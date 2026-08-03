@@ -11,6 +11,19 @@ import type {
 } from "@/lib/types";
 import { shortDate } from "@/lib/format";
 
+export type PreviousReturnSeed = {
+  hours_reading: number | null;
+  fuel_level: ConditionInspection["fuel_level"];
+  notes: string | null;
+  needs_service: boolean;
+  photo_front_url: string | null;
+  photo_rear_url: string | null;
+  photo_left_url: string | null;
+  photo_right_url: string | null;
+  inspected_at: string;
+  source_client_name: string | null;
+};
+
 export function ConditionInspectionForm({
   bookingId,
   phase,
@@ -18,6 +31,7 @@ export function ConditionInspectionForm({
   equipmentName,
   initial,
   canEdit,
+  previousReturn,
 }: {
   bookingId: string;
   phase: InspectionPhase;
@@ -25,13 +39,19 @@ export function ConditionInspectionForm({
   equipmentName: string;
   initial: ConditionInspection | null;
   canEdit: boolean;
+  /** When outbound is empty, seed from last return on this machine. */
+  previousReturn?: PreviousReturnSeed | null;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [carrying, setCarrying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [ackUrl, setAckUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const seed =
+    phase === "outbound" && !initial && previousReturn ? previousReturn : null;
 
   const title = phase === "outbound" ? "Outbound inspection" : "Return inspection";
   const appUrl = useMemo(() => {
@@ -134,6 +154,35 @@ export function ConditionInspectionForm({
     }
   }
 
+  async function usePreviousReturn() {
+    setCarrying(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch(
+        `/api/bookings/${bookingId}/inspections/carry-forward`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ force: Boolean(initial) }),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Carry-forward failed");
+      setMessage(
+        data.created
+          ? "Outbound filled from the previous return inspection."
+          : "Outbound already on file.",
+      );
+      setAckUrl(data.ackUrl || null);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Carry-forward failed");
+    } finally {
+      setCarrying(false);
+    }
+  }
+
   return (
     <div className="space-y-3">
       <div>
@@ -144,6 +193,27 @@ export function ConditionInspectionForm({
           trailer-side photos
         </p>
       </div>
+
+      {seed && canEdit ? (
+        <div className="space-y-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm">
+          <p className="font-medium text-amber-950">
+            Default: use previous return as outbound
+          </p>
+          <p className="text-xs text-amber-900">
+            {seed.source_client_name || "Previous hire"} ·{" "}
+            {shortDate(seed.inspected_at)} · Hours {seed.hours_reading ?? "—"} ·
+            Fuel {seed.fuel_level}
+          </p>
+          <button
+            type="button"
+            className={btnPrimary}
+            disabled={carrying || loading}
+            onClick={() => void usePreviousReturn()}
+          >
+            {carrying ? "Applying…" : "Use previous return as outbound"}
+          </button>
+        </div>
+      ) : null}
 
       {initial ? (
         <div className="rounded border border-brand-green/30 bg-brand-green/5 px-3 py-2 text-sm">
@@ -188,14 +258,14 @@ export function ConditionInspectionForm({
         </div>
       ) : null}
 
-      {initial ? (
+      {initial || seed ? (
         <div className="grid grid-cols-2 gap-2">
           {(
             [
-              ["Front", initial.photo_front_url],
-              ["Rear", initial.photo_rear_url],
-              ["Left", initial.photo_left_url],
-              ["Right", initial.photo_right_url],
+              ["Front", (initial || seed)?.photo_front_url],
+              ["Rear", (initial || seed)?.photo_rear_url],
+              ["Left", (initial || seed)?.photo_left_url],
+              ["Right", (initial || seed)?.photo_right_url],
             ] as const
           ).map(([label, url]) =>
             url ? (
@@ -214,6 +284,7 @@ export function ConditionInspectionForm({
                 />
                 <div className="bg-neutral-50 px-2 py-1 text-[10px] uppercase tracking-wide text-neutral-500">
                   {label}
+                  {seed && !initial ? " · previous" : ""}
                 </div>
               </a>
             ) : null,
@@ -233,7 +304,7 @@ export function ConditionInspectionForm({
                 type="number"
                 step="0.1"
                 min="0"
-                defaultValue={initial?.hours_reading ?? ""}
+                defaultValue={initial?.hours_reading ?? seed?.hours_reading ?? ""}
                 className={inputClass}
                 placeholder="e.g. 1240.5"
               />
@@ -245,7 +316,7 @@ export function ConditionInspectionForm({
               <select
                 name="fuel_level"
                 required
-                defaultValue={initial?.fuel_level || "full"}
+                defaultValue={initial?.fuel_level || seed?.fuel_level || "full"}
                 className={inputClass}
               >
                 {FUEL_LEVELS.map((level) => (
@@ -267,12 +338,12 @@ export function ConditionInspectionForm({
             {PHOTO_SIDES.map((side) => {
               const hasExisting =
                 side === "front"
-                  ? Boolean(initial?.photo_front_url)
+                  ? Boolean(initial?.photo_front_url || seed?.photo_front_url)
                   : side === "rear"
-                    ? Boolean(initial?.photo_rear_url)
+                    ? Boolean(initial?.photo_rear_url || seed?.photo_rear_url)
                     : side === "left"
-                      ? Boolean(initial?.photo_left_url)
-                      : Boolean(initial?.photo_right_url);
+                      ? Boolean(initial?.photo_left_url || seed?.photo_left_url)
+                      : Boolean(initial?.photo_right_url || seed?.photo_right_url);
               return (
                 <div key={side}>
                   <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-neutral-500">
@@ -284,7 +355,7 @@ export function ConditionInspectionForm({
                     type="file"
                     accept="image/*,.heic,.heif"
                     className="block w-full text-xs"
-                    required={!hasExisting}
+                    required={!hasExisting && !seed}
                   />
                 </div>
               );
@@ -298,7 +369,7 @@ export function ConditionInspectionForm({
             <textarea
               name="notes"
               rows={2}
-              defaultValue={initial?.notes || ""}
+              defaultValue={initial?.notes || seed?.notes || ""}
               className={inputClass}
               placeholder="Damage, attachments on trailer, etc."
             />
@@ -308,10 +379,19 @@ export function ConditionInspectionForm({
             <input
               name="needs_service"
               type="checkbox"
-              defaultChecked={Boolean(initial?.needs_service)}
+              defaultChecked={Boolean(
+                initial?.needs_service ?? seed?.needs_service,
+              )}
             />
             Equipment may need service after return
           </label>
+
+          {seed && !initial ? (
+            <p className="text-xs text-neutral-500">
+              Tip: use <strong>Use previous return as outbound</strong> above to
+              save photos/hours in one tap. Or edit fields and save manually.
+            </p>
+          ) : null}
 
           <button type="submit" disabled={loading} className={btnPrimary}>
             {loading

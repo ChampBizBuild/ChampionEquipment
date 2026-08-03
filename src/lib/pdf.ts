@@ -267,8 +267,12 @@ export async function buildInvoicePdf(params: {
   };
 
   const { settings, invoice } = params;
-  const isAdditional = invoice.kind === "additional";
-  const kindTitle = isAdditional ? "Additional charges" : "Equipment hire";
+  const kindTitle =
+    invoice.kind === "additional"
+      ? "Additional charges"
+      : invoice.kind === "extension"
+        ? "Mid-term extra hire"
+        : "Equipment hire";
   const items = (invoice.line_items || []) as InvoiceLineItem[];
 
   // Top accent bar

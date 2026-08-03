@@ -105,15 +105,17 @@ export function BookingActions({
 
       {status === "confirmed" && !hasOutboundInspection ? (
         <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Complete the <strong>outbound condition register</strong> (hours,
-          fuel, 4 photos) before marking Out.
+          Complete the <strong>outbound condition register</strong> before
+          marking Out. If this machine has a previous return on file, use that
+          as the default outbound (or it fills automatically when you schedule).
         </p>
       ) : null}
 
       {status === "out" && !hasReturnInspection ? (
         <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
           Complete the <strong>return condition register</strong> before marking
-          Returned. Fuel / late days will draft onto the extras invoice.
+          Returned. Fuel and any remaining unbilled late days draft onto the
+          extras invoice (mid-term invoices are not double-charged).
         </p>
       ) : null}
 
